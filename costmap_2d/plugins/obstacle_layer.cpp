@@ -70,6 +70,8 @@ void ObstacleLayer::onInitialize()
   double transform_tolerance;
   nh.param("transform_tolerance", transform_tolerance, 0.2);
 
+  nh.param("dynamic_object", dynamic_objects_, false );
+
   std::string topics_string;
   //get the topics that we'll subscribe to from the parameter server
   nh.param("observation_sources", topics_string, std::string(""));
@@ -245,6 +247,7 @@ void ObstacleLayer::reconfigureCB(costmap_2d::ObstaclePluginConfig &config, uint
 {
   enabled_ = config.enabled;
   max_obstacle_height_ = config.max_obstacle_height;
+  dynamic_objects_ = config.dynamic_objects;
   combination_method_ = config.combination_method;
 }
 
@@ -281,7 +284,7 @@ void ObstacleLayer::laserScanValidInfCallback(const sensor_msgs::LaserScanConstP
   for( size_t i = 0; i < message.ranges.size(); i++ )
   {
     float range = message.ranges[ i ];
-    if( !std::isfinite( range ) && range > 0 )
+    if( (!std::isfinite( range ) && range > 0 ) || range >= message.range_max || std::isnan( range ))
     {
       message.ranges[ i ] = message.range_max - epsilon;
     }
@@ -355,10 +358,15 @@ void ObstacleLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   //update the global current status
   current_ = current;
 
-  //raytrace freespace
-  for (unsigned int i = 0; i < clearing_observations.size(); ++i)
-  {
-    raytraceFreespace(clearing_observations[i], min_x, min_y, max_x, max_y);
+  if (current && dynamic_objects_) {
+    resetMaps();
+  }
+  else {
+	//raytrace freespace
+	for (unsigned int i = 0; i < clearing_observations.size(); ++i)
+	{
+       raytraceFreespace(clearing_observations[i], min_x, min_y, max_x, max_y);
+	}
   }
 
   //place the new obstacles into a priority queue... each with a priority of zero to begin with
